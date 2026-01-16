@@ -97,15 +97,15 @@
                         imgElement.style.display = 'block';
                         console.log('Floor plan image displayed');
                         
+                        const dotsContainer = document.getElementById('dotsContainer');
+                        dotsContainer.innerHTML = ''; // Clear any existing dots
+                        
+                        // Get the scale factor between natural and displayed size
+                        const scaleX = imgElement.clientWidth / imgElement.naturalWidth;
+                        const scaleY = imgElement.clientHeight / imgElement.naturalHeight;
+                        
                         // Display BLE transmitter dots after image loads
                         if (aggregatedData && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
-                            const dotsContainer = document.getElementById('dotsContainer');
-                            dotsContainer.innerHTML = ''; // Clear any existing dots
-                            
-                            // Get the scale factor between natural and displayed size
-                            const scaleX = imgElement.clientWidth / imgElement.naturalWidth;
-                            const scaleY = imgElement.clientHeight / imgElement.naturalHeight;
-                            
                             aggregatedData.ble_tx_id_coordinates.forEach(item => {
                                 if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
                                     const dot = document.createElement('div');
@@ -139,6 +139,43 @@
                             });
                             
                             console.log(`Displayed ${aggregatedData.ble_tx_id_coordinates.length} BLE transmitter dots`);
+                        }
+                        
+                        // Display basestation dots after image loads
+                        if (aggregatedData && aggregatedData.augi_metadata && aggregatedData.augi_metadata.length > 0) {
+                            aggregatedData.augi_metadata.forEach(item => {
+                                if (item.augi_location_coordinate_pixels && item.augi_location_coordinate_pixels.length === 2) {
+                                    const dot = document.createElement('div');
+                                    dot.style.position = 'absolute';
+                                    dot.style.left = `${item.augi_location_coordinate_pixels[0] * scaleX}px`;
+                                    dot.style.top = `${item.augi_location_coordinate_pixels[1] * scaleY}px`;
+                                    dot.style.width = '10px';
+                                    dot.style.height = '10px';
+                                    dot.style.backgroundColor = 'blue';
+                                    dot.style.borderRadius = '50%';
+                                    dot.style.transform = 'translate(-50%, -50%)';
+                                    dot.title = `Basestation ID: ${item.basestation_id}, Coprocessor: ${item.coprocessor}`;
+                                    
+                                    dotsContainer.appendChild(dot);
+                                    
+                                    // Add label next to the dot
+                                    const label = document.createElement('div');
+                                    label.style.position = 'absolute';
+                                    label.style.left = `${item.augi_location_coordinate_pixels[0] * scaleX + 10}px`;
+                                    label.style.top = `${item.augi_location_coordinate_pixels[1] * scaleY}px`;
+                                    label.style.transform = 'translateY(-50%)';
+                                    label.style.color = 'blue';
+                                    label.style.fontWeight = 'bold';
+                                    label.style.fontSize = '12px';
+                                    label.style.whiteSpace = 'nowrap';
+                                    label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
+                                    label.textContent = `${item.basestation_id} (${item.coprocessor})`;
+                                    
+                                    dotsContainer.appendChild(label);
+                                }
+                            });
+                            
+                            console.log(`Displayed ${aggregatedData.augi_metadata.length} basestation dots`);
                         }
                     };
                     
