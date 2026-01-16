@@ -3,9 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello World</title>
+    <title>Data Visualizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
-    <h1>Hello World</h1>
+    <h1>Data Visualizer</h1>
+    
+    <div>
+        <input type="file" id="zipFileInput" accept=".zip" />
+        <label for="zipFileInput">Choose a ZIP file</label>
+    </div>
+
+    <div id="staticWindowInfo" style="margin-top: 20px; display: none;">
+        <h3>Static Window</h3>
+        <p><strong>Start:</strong> <span id="startTime"></span></p>
+        <p><strong>End:</strong> <span id="endTime"></span></p>
+    </div>
+
+    <div id="imageContainer" style="margin-top: 20px; position: relative; display: inline-block;">
+        <img id="floorPlanImage" style="max-width: 100%; display: none;" />
+        <div id="dotsContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></div>
+    </div>
+
+    <script>
+        let aggregatedData = null;
+        
+        document.getElementById('zipFileInput').addEventListener('change', async function(event) {
+            const file = event.target.files[0];
+            
+            if (!file) {
+                return;
+            }
+            
+            if (!file.name.endsWith('.zip')) {
+                console.error('Please select a ZIP file');
+                return;
+            }
+            
+            try {
+                console.log(`Processing ZIP file: ${file.name}`);
+                
+                const zip = new JSZip();
+                const contents = await zip.loadAsync(file);
+                
+                console.log('File sizes in ZIP archive:');
+                console.log('----------------------------');
+                
+                let floorPlanFile = null;
+                let aggregatedJsonFile = null;
+                
+                Object.keys(contents.files).forEach(filename => {
+                    const fileData = contents.files[filename];
+                    if (!fileData.dir) {
+                        console.log(`${filename}: ${fileData._data.uncompressedSize} bytes`);
+                        
+                        // Check if this is the floor_plan.jpg file
+                        if (filename.endsWith('floor_plan.jpg') || filename === 'floor_plan.jpg') {
+                            floorPlanFile = fileData;
+                        }
+                        
+                        // Check if this is the aggregated.json file
+                        if (filename.endsWith('manual_gt_data.json') || filename === 'manual_gt_data.json') {
+                            aggregatedJsonFile = fileData;
+                        }
+                    }
+                });
+                
+                console.log('----------------------------');
+                
+                // Load the aggregated.json file if found
+                if (aggregatedJsonFile) {
+                    const jsonText = await aggregatedJsonFile.async('text');
+                    aggregatedData = JSON.parse(jsonText);
+                    console.log('manual_gt_data.json loaded:', aggregatedData);
+                    
+                    // Display static_window if available
+                    if (aggregatedData.static_window && aggregatedData.static_window.length === 2) {
+                        document.getElementById('startTime').textContent = aggregatedData.static_window[0];
+                        document.getElementById('endTime').textContent = aggregatedData.static_window[1];
+                        document.getElementById('staticWindowInfo').style.display = 'block';
+                        
+                        console.log('Static window displayed:', aggregatedData.static_window);
+                    }
+                }
+                
+                // Display the floor plan image if found
+                if (floorPlanFile) {
+                    const blob = await floorPlanFile.async('blob');
+                    const imageUrl = URL.createObjectURL(blob);
+                    const imgElement = document.getElementById('floorPlanImage');
+                    
+                    imgElement.onload = function() {
+                        imgElement.style.display = 'block';
+                        console.log('Floor plan image displayed');
+                        
+                        // Display BLE transmitter dots after image loads
+                        if (aggregatedData && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
+                            const dotsContainer = document.getElementById('dotsContainer');
+                            dotsContainer.innerHTML = ''; // Clear any existing dots
+                            
+                            // Get the scale factor between natural and displayed size
+                            const scaleX = imgElement.clientWidth / imgElement.naturalWidth;
+                            const scaleY = imgElement.clientHeight / imgElement.naturalHeight;
+                            
+                            aggregatedData.ble_tx_id_coordinates.forEach(item => {
+                                if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
+                                    const dot = document.createElement('div');
+                                    dot.style.position = 'absolute';
+                                    dot.style.left = `${item.coordinate_pixels[0] * scaleX}px`;
+                                    dot.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
+                                    dot.style.width = '10px';
+                                    dot.style.height = '10px';
+                                    dot.style.backgroundColor = 'red';
+                                    dot.style.borderRadius = '50%';
+                                    dot.style.transform = 'translate(-50%, -50%)';
+                                    dot.title = `BLE TX ID: ${item.ble_tx_id}`;
+                                    
+                                    dotsContainer.appendChild(dot);
+                                    
+                                    // Add label next to the dot
+                                    const label = document.createElement('div');
+                                    label.style.position = 'absolute';
+                                    label.style.left = `${item.coordinate_pixels[0] * scaleX + 10}px`;
+                                    label.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
+                                    label.style.transform = 'translateY(-50%)';
+                                    label.style.color = 'red';
+                                    label.style.fontWeight = 'bold';
+                                    label.style.fontSize = '12px';
+                                    label.style.whiteSpace = 'nowrap';
+                                    label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
+                                    label.textContent = item.ble_tx_id;
+                                    
+                                    dotsContainer.appendChild(label);
+                                }
+                            });
+                            
+                            console.log(`Displayed ${aggregatedData.ble_tx_id_coordinates.length} BLE transmitter dots`);
+                        }
+                    };
+                    
+                    imgElement.src = imageUrl;
+                } else {
+                    console.warn('floor_plan.jpg not found in the ZIP file');
+                }
+            } catch (error) {
+                console.error('Error processing ZIP file:', error);
+            }
+        });
+    </script>
 </body>
 </html>
