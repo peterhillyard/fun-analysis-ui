@@ -14,6 +14,33 @@
         <label for="zipFileInput">Choose a ZIP file</label>
     </div>
 
+    <div style="margin-top: 10px;">
+        <label>
+            <input type="checkbox" id="showBleTxIds" checked />
+            Show BLE TX IDs
+        </label>
+        <label style="margin-left: 20px;">
+            BLE Label:
+            <select id="bleLabelOption">
+                <option value="full">Full ID</option>
+                <option value="last4" selected>Last 4 chars</option>
+                <option value="none">No Label</option>
+            </select>
+        </label>
+        <label style="margin-left: 20px;">
+            <input type="checkbox" id="showBasestations" checked />
+            Show Basestations
+        </label>
+        <label style="margin-left: 20px;">
+            Basestation Label:
+            <select id="basestationLabelOption">
+                <option value="full">Full ID</option>
+                <option value="last4" selected>Last 4 chars</option>
+                <option value="none">No Label</option>
+            </select>
+        </label>
+    </div>
+
     <div id="staticWindowInfo" style="margin-top: 20px; display: none;">
         <h3>Static Window</h3>
         <p><strong>Start:</strong> <span id="startTime"></span></p>
@@ -27,6 +54,114 @@
 
     <script>
         let aggregatedData = null;
+        let currentImageElement = null;
+        
+        function renderDots() {
+            if (!currentImageElement || !aggregatedData) return;
+            
+            const imgElement = currentImageElement;
+            const dotsContainer = document.getElementById('dotsContainer');
+            dotsContainer.innerHTML = ''; // Clear any existing dots
+            
+            // Get the scale factor between natural and displayed size
+            const scaleX = imgElement.clientWidth / imgElement.naturalWidth;
+            const scaleY = imgElement.clientHeight / imgElement.naturalHeight;
+            
+            const showBleTxIds = document.getElementById('showBleTxIds').checked;
+            const showBasestations = document.getElementById('showBasestations').checked;
+            const bleLabelOption = document.getElementById('bleLabelOption').value;
+            const basestationLabelOption = document.getElementById('basestationLabelOption').value;
+            
+            // Display BLE transmitter dots
+            if (showBleTxIds && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
+                aggregatedData.ble_tx_id_coordinates.forEach(item => {
+                    if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
+                        const dot = document.createElement('div');
+                        dot.style.position = 'absolute';
+                        dot.style.left = `${item.coordinate_pixels[0] * scaleX}px`;
+                        dot.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
+                        dot.style.width = '10px';
+                        dot.style.height = '10px';
+                        dot.style.backgroundColor = 'red';
+                        dot.style.borderRadius = '50%';
+                        dot.style.transform = 'translate(-50%, -50%)';
+                        dot.title = `BLE TX ID: ${item.ble_tx_id}`;
+                        
+                        dotsContainer.appendChild(dot);
+                        
+                        // Add label next to the dot if not 'none'
+                        if (bleLabelOption !== 'none') {
+                            const label = document.createElement('div');
+                            label.style.position = 'absolute';
+                            label.style.left = `${item.coordinate_pixels[0] * scaleX + 10}px`;
+                            label.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
+                            label.style.transform = 'translateY(-50%)';
+                            label.style.color = 'red';
+                            label.style.fontWeight = 'bold';
+                            label.style.fontSize = '12px';
+                            label.style.whiteSpace = 'nowrap';
+                            label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
+                            
+                            if (bleLabelOption === 'full') {
+                                label.textContent = item.ble_tx_id;
+                            } else if (bleLabelOption === 'last4') {
+                                label.textContent = item.ble_tx_id.slice(-4);
+                            }
+                            
+                            dotsContainer.appendChild(label);
+                        }
+                    }
+                });
+            }
+            
+            // Display basestation dots
+            if (showBasestations && aggregatedData.augi_metadata && aggregatedData.augi_metadata.length > 0) {
+                aggregatedData.augi_metadata.forEach(item => {
+                    if (item.augi_location_coordinate_pixels && item.augi_location_coordinate_pixels.length === 2) {
+                        const dot = document.createElement('div');
+                        dot.style.position = 'absolute';
+                        dot.style.left = `${item.augi_location_coordinate_pixels[0] * scaleX}px`;
+                        dot.style.top = `${item.augi_location_coordinate_pixels[1] * scaleY}px`;
+                        dot.style.width = '10px';
+                        dot.style.height = '10px';
+                        dot.style.backgroundColor = 'blue';
+                        dot.style.borderRadius = '50%';
+                        dot.style.transform = 'translate(-50%, -50%)';
+                        dot.title = `Basestation ID: ${item.basestation_id}, Coprocessor: ${item.coprocessor}`;
+                        
+                        dotsContainer.appendChild(dot);
+                        
+                        // Add label next to the dot if not 'none'
+                        if (basestationLabelOption !== 'none') {
+                            const label = document.createElement('div');
+                            label.style.position = 'absolute';
+                            label.style.left = `${item.augi_location_coordinate_pixels[0] * scaleX + 10}px`;
+                            label.style.top = `${item.augi_location_coordinate_pixels[1] * scaleY}px`;
+                            label.style.transform = 'translateY(-50%)';
+                            label.style.color = 'blue';
+                            label.style.fontWeight = 'bold';
+                            label.style.fontSize = '12px';
+                            label.style.whiteSpace = 'nowrap';
+                            label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
+                            
+                            if (basestationLabelOption === 'full') {
+                                label.textContent = `${item.basestation_id} (${item.coprocessor})`;
+                            } else if (basestationLabelOption === 'last4') {
+                                label.textContent = `${item.basestation_id.slice(-4)} (${item.coprocessor.slice(-4)})`;
+                            }
+                            
+                            dotsContainer.appendChild(label);
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Add event listeners to checkboxes and dropdown
+        document.getElementById('showBleTxIds').addEventListener('change', renderDots);
+        document.getElementById('bleLabelOption').addEventListener('change', renderDots);
+        document.getElementById('showBasestations').addEventListener('change', renderDots);
+        document.getElementById('basestationLabelOption').addEventListener('change', renderDots);
         
         document.getElementById('zipFileInput').addEventListener('change', async function(event) {
             const file = event.target.files[0];
@@ -96,87 +231,8 @@
                     imgElement.onload = function() {
                         imgElement.style.display = 'block';
                         console.log('Floor plan image displayed');
-                        
-                        const dotsContainer = document.getElementById('dotsContainer');
-                        dotsContainer.innerHTML = ''; // Clear any existing dots
-                        
-                        // Get the scale factor between natural and displayed size
-                        const scaleX = imgElement.clientWidth / imgElement.naturalWidth;
-                        const scaleY = imgElement.clientHeight / imgElement.naturalHeight;
-                        
-                        // Display BLE transmitter dots after image loads
-                        if (aggregatedData && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
-                            aggregatedData.ble_tx_id_coordinates.forEach(item => {
-                                if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
-                                    const dot = document.createElement('div');
-                                    dot.style.position = 'absolute';
-                                    dot.style.left = `${item.coordinate_pixels[0] * scaleX}px`;
-                                    dot.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
-                                    dot.style.width = '10px';
-                                    dot.style.height = '10px';
-                                    dot.style.backgroundColor = 'red';
-                                    dot.style.borderRadius = '50%';
-                                    dot.style.transform = 'translate(-50%, -50%)';
-                                    dot.title = `BLE TX ID: ${item.ble_tx_id}`;
-                                    
-                                    dotsContainer.appendChild(dot);
-                                    
-                                    // Add label next to the dot
-                                    const label = document.createElement('div');
-                                    label.style.position = 'absolute';
-                                    label.style.left = `${item.coordinate_pixels[0] * scaleX + 10}px`;
-                                    label.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
-                                    label.style.transform = 'translateY(-50%)';
-                                    label.style.color = 'red';
-                                    label.style.fontWeight = 'bold';
-                                    label.style.fontSize = '12px';
-                                    label.style.whiteSpace = 'nowrap';
-                                    label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
-                                    label.textContent = item.ble_tx_id;
-                                    
-                                    dotsContainer.appendChild(label);
-                                }
-                            });
-                            
-                            console.log(`Displayed ${aggregatedData.ble_tx_id_coordinates.length} BLE transmitter dots`);
-                        }
-                        
-                        // Display basestation dots after image loads
-                        if (aggregatedData && aggregatedData.augi_metadata && aggregatedData.augi_metadata.length > 0) {
-                            aggregatedData.augi_metadata.forEach(item => {
-                                if (item.augi_location_coordinate_pixels && item.augi_location_coordinate_pixels.length === 2) {
-                                    const dot = document.createElement('div');
-                                    dot.style.position = 'absolute';
-                                    dot.style.left = `${item.augi_location_coordinate_pixels[0] * scaleX}px`;
-                                    dot.style.top = `${item.augi_location_coordinate_pixels[1] * scaleY}px`;
-                                    dot.style.width = '10px';
-                                    dot.style.height = '10px';
-                                    dot.style.backgroundColor = 'blue';
-                                    dot.style.borderRadius = '50%';
-                                    dot.style.transform = 'translate(-50%, -50%)';
-                                    dot.title = `Basestation ID: ${item.basestation_id}, Coprocessor: ${item.coprocessor}`;
-                                    
-                                    dotsContainer.appendChild(dot);
-                                    
-                                    // Add label next to the dot
-                                    const label = document.createElement('div');
-                                    label.style.position = 'absolute';
-                                    label.style.left = `${item.augi_location_coordinate_pixels[0] * scaleX + 10}px`;
-                                    label.style.top = `${item.augi_location_coordinate_pixels[1] * scaleY}px`;
-                                    label.style.transform = 'translateY(-50%)';
-                                    label.style.color = 'blue';
-                                    label.style.fontWeight = 'bold';
-                                    label.style.fontSize = '12px';
-                                    label.style.whiteSpace = 'nowrap';
-                                    label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
-                                    label.textContent = `${item.basestation_id} (${item.coprocessor})`;
-                                    
-                                    dotsContainer.appendChild(label);
-                                }
-                            });
-                            
-                            console.log(`Displayed ${aggregatedData.augi_metadata.length} basestation dots`);
-                        }
+                        currentImageElement = imgElement;
+                        renderDots();
                     };
                     
                     imgElement.src = imageUrl;
