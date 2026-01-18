@@ -85,12 +85,12 @@
             <table id="coprocessorTable" style="border-collapse: collapse; width: 100%; max-width: 600px;">
                 <thead>
                     <tr style="background-color: #f0f0f0;">
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Coprocessor ID</th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Dataset</th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Count</th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Min RSSI</th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Max RSSI</th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Avg RSSI</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="coprocessorId">Coprocessor ID <span id="sort-coprocessorId"></span></th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="dataset">Dataset <span id="sort-dataset"></span></th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="count">Count <span id="sort-count"></span></th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="minRssi">Min RSSI <span id="sort-minRssi"></span></th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="maxRssi">Max RSSI <span id="sort-maxRssi"></span></th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="avgRssi">Avg RSSI <span id="sort-avgRssi"></span></th>
                     </tr>
                 </thead>
                 <tbody id="coprocessorTableBody">
@@ -117,6 +117,83 @@
         let selectedCoprocessorId = null;
         let image1Opacity = 1.0;
         let image2Opacity = 0.5;
+        let currentSortColumn = 'dataset';
+        let currentSortDirection = 'asc';
+        let currentTableData = [];
+        
+        function sortTableData(column) {
+            if (currentSortColumn === column) {
+                // Toggle direction if same column
+                currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                // New column, default to ascending
+                currentSortColumn = column;
+                currentSortDirection = 'asc';
+            }
+            
+            // Sort the data
+            currentTableData.sort((a, b) => {
+                let valA = a[column];
+                let valB = b[column];
+                
+                // Convert to numbers for numeric columns
+                if (column === 'count' || column === 'dataset') {
+                    valA = parseFloat(valA);
+                    valB = parseFloat(valB);
+                } else if (column === 'minRssi' || column === 'maxRssi' || column === 'avgRssi') {
+                    valA = valA === 'N/A' ? -Infinity : parseFloat(valA);
+                    valB = valB === 'N/A' ? -Infinity : parseFloat(valB);
+                }
+                
+                if (valA < valB) return currentSortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+            
+            // Update sort indicators
+            document.querySelectorAll('[id^="sort-"]').forEach(span => span.textContent = '');
+            document.getElementById(`sort-${column}`).textContent = currentSortDirection === 'asc' ? '▲' : '▼';
+            
+            // Re-render table
+            renderTableRows();
+        }
+        
+        function renderTableRows() {
+            const tableBody = document.getElementById('coprocessorTableBody');
+            tableBody.innerHTML = '';
+            
+            if (currentTableData.length === 0) {
+                const row = tableBody.insertRow();
+                const cell = row.insertCell(0);
+                cell.colSpan = 6;
+                cell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center; color: #666;';
+                cell.textContent = 'No data found for this BLE TX ID';
+            } else {
+                currentTableData.forEach(entry => {
+                    const row = tableBody.insertRow();
+                    const cellId = row.insertCell(0);
+                    const cellDataset = row.insertCell(1);
+                    const cellCount = row.insertCell(2);
+                    const cellMinRssi = row.insertCell(3);
+                    const cellMaxRssi = row.insertCell(4);
+                    const cellAvgRssi = row.insertCell(5);
+                    
+                    cellId.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellDataset.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
+                    cellCount.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellMinRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellMaxRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellAvgRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    
+                    cellId.textContent = entry.coprocessorId;
+                    cellDataset.textContent = entry.dataset;
+                    cellCount.textContent = entry.count;
+                    cellMinRssi.textContent = entry.minRssi;
+                    cellMaxRssi.textContent = entry.maxRssi;
+                    cellAvgRssi.textContent = entry.avgRssi;
+                });
+            }
+        }
         
         function drawLinesToBasestations(bleTxId, bleCoordinates, scaleX, scaleY, datasetNum) {
             const linesContainer = document.getElementById('linesContainer');
@@ -335,13 +412,13 @@
             });
             
             // Create entries with dataset information
-            const allEntries = [];
+            currentTableData = [];
             Object.entries(coprocessorStats).forEach(([coprocessorId, stats]) => {
                 const dataset = coprocessorToDataset[coprocessorId] || '?';
                 const avgRssi = stats.count > 0 ? (stats.sumRssi / stats.count).toFixed(1) : 'N/A';
                 const minRssi = stats.minRssi !== Infinity ? stats.minRssi.toFixed(1) : 'N/A';
                 const maxRssi = stats.maxRssi !== -Infinity ? stats.maxRssi.toFixed(1) : 'N/A';
-                allEntries.push({ 
+                currentTableData.push({ 
                     coprocessorId, 
                     dataset, 
                     count: stats.count,
@@ -351,44 +428,8 @@
                 });
             });
             
-            // Sort by dataset, then by count descending
-            allEntries.sort((a, b) => {
-                if (a.dataset !== b.dataset) return a.dataset - b.dataset;
-                return b.count - a.count;
-            });
-            
-            // Populate table
-            if (allEntries.length === 0) {
-                const row = tableBody.insertRow();
-                const cell = row.insertCell(0);
-                cell.colSpan = 6;
-                cell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center; color: #666;';
-                cell.textContent = 'No data found for this BLE TX ID';
-            } else {
-                allEntries.forEach(entry => {
-                    const row = tableBody.insertRow();
-                    const cellId = row.insertCell(0);
-                    const cellDataset = row.insertCell(1);
-                    const cellCount = row.insertCell(2);
-                    const cellMinRssi = row.insertCell(3);
-                    const cellMaxRssi = row.insertCell(4);
-                    const cellAvgRssi = row.insertCell(5);
-                    
-                    cellId.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
-                    cellDataset.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
-                    cellCount.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
-                    cellMinRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
-                    cellMaxRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
-                    cellAvgRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
-                    
-                    cellId.textContent = entry.coprocessorId;
-                    cellDataset.textContent = entry.dataset;
-                    cellCount.textContent = entry.count;
-                    cellMinRssi.textContent = entry.minRssi;
-                    cellMaxRssi.textContent = entry.maxRssi;
-                    cellAvgRssi.textContent = entry.avgRssi;
-                });
-            }
+            // Sort and render
+            sortTableData(currentSortColumn);
             
             document.getElementById('bleDataTable').style.display = 'block';
         }
@@ -559,6 +600,17 @@
         // Add event listener for BLE TX ID selector
         document.getElementById('bleTxIdSelector').addEventListener('change', function(event) {
             generateCoprocessorTable(event.target.value);
+        });
+        
+        // Add event listeners for table header sorting
+        document.addEventListener('DOMContentLoaded', function() {
+            const headers = document.querySelectorAll('#coprocessorTable thead th[data-column]');
+            headers.forEach(header => {
+                header.addEventListener('click', function() {
+                    const column = this.getAttribute('data-column');
+                    sortTableData(column);
+                });
+            });
         });
         
         // Add event listener for toggle table button
