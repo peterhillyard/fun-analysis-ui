@@ -10,8 +10,12 @@
     <h1>Data Visualizer</h1>
     
     <div>
-        <input type="file" id="zipFileInput" accept=".zip" />
-        <label for="zipFileInput">Choose a ZIP file</label>
+        <input type="file" id="zipFileInput1" accept=".zip" />
+        <label for="zipFileInput1">Choose First ZIP file</label>
+        <span style="margin-left: 20px;">
+            <input type="file" id="zipFileInput2" accept=".zip" />
+            <label for="zipFileInput2">Choose Second ZIP file</label>
+        </span>
     </div>
 
     <div style="margin-top: 10px;">
@@ -48,6 +52,19 @@
         </label>
     </div>
 
+    <div style="margin-top: 10px;">
+        <label>
+            Image 1 Opacity:
+            <input type="range" id="image1Opacity" min="0" max="100" value="100" style="width: 200px; margin-left: 10px;" />
+            <span id="image1OpacityValue">100%</span>
+        </label>
+        <label style="margin-left: 20px;">
+            Image 2 Opacity:
+            <input type="range" id="image2Opacity" min="0" max="100" value="50" style="width: 200px; margin-left: 10px;" />
+            <span id="image2OpacityValue">50%</span>
+        </label>
+    </div>
+
     <div id="staticWindowInfo" style="margin-top: 20px; display: none;">
         <h3>Static Window</h3>
         <p><strong>Start:</strong> <span id="startTime"></span></p>
@@ -60,6 +77,7 @@
                     <option value="">-- Select a BLE TX ID --</option>
                 </select>
             </label>
+            <button id="toggleTableBtn" style="margin-left: 20px; padding: 5px 15px; cursor: pointer;">Hide Table</button>
         </div>
         
         <div id="bleDataTable" style="margin-top: 15px; display: none;">
@@ -68,7 +86,11 @@
                 <thead>
                     <tr style="background-color: #f0f0f0;">
                         <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Coprocessor ID</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Dataset</th>
                         <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Count</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Min RSSI</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Max RSSI</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Avg RSSI</th>
                     </tr>
                 </thead>
                 <tbody id="coprocessorTableBody">
@@ -78,20 +100,25 @@
     </div>
 
     <div id="imageContainer" style="margin-top: 20px; position: relative; display: inline-block;">
-        <img id="floorPlanImage" style="max-width: 100%; display: none;" />
+        <img id="floorPlanImage1" style="max-width: 100%; display: none; position: relative;" />
+        <img id="floorPlanImage2" style="max-width: 100%; display: none; position: absolute; top: 0; left: 0; opacity: 0.5;" />
         <svg id="linesContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></svg>
         <div id="dotsContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></div>
         <div id="hoverInfo" style="position: absolute; display: none; background-color: rgba(0, 0, 0, 0.8); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 1000; white-space: nowrap;"></div>
     </div>
 
     <script>
-        let aggregatedData = null;
-        let currentImageElement = null;
-        let bleData = null;
+        let aggregatedData1 = null;
+        let aggregatedData2 = null;
+        let bleData1 = null;
+        let currentImageElement1 = null;
+        let currentImageElement2 = null;
         let selectedBleTxId = null;
         let selectedCoprocessorId = null;
+        let image1Opacity = 1.0;
+        let image2Opacity = 0.5;
         
-        function drawLinesToBasestations(bleTxId, bleCoordinates, scaleX, scaleY) {
+        function drawLinesToBasestations(bleTxId, bleCoordinates, scaleX, scaleY, datasetNum) {
             const linesContainer = document.getElementById('linesContainer');
             linesContainer.innerHTML = ''; // Clear existing lines
             
@@ -101,65 +128,79 @@
             
             selectedCoprocessorId = null; // Clear basestation selection
             
-            if (!bleData || !aggregatedData || !aggregatedData.augi_metadata) return;
-            
             const basestationCoordinateOption = document.getElementById('basestationCoordinateOption').value;
             const dotsContainer = document.getElementById('dotsContainer');
             
-            // Count how many times each coprocessor heard this BLE TX ID
-            const heardByCoprocessors = {};
-            bleData.forEach(row => {
-                if (row.ble_tx_id === bleTxId) {
-                    const coprocessorId = row.coprocessor_id;
-                    if (coprocessorId) {
-                        heardByCoprocessors[coprocessorId] = (heardByCoprocessors[coprocessorId] || 0) + 1;
+            // Process both datasets
+            [1, 2].forEach(dsNum => {
+                const aggregatedData = dsNum === 1 ? aggregatedData1 : aggregatedData2;
+                const imgElement = dsNum === 1 ? currentImageElement1 : currentImageElement2;
+                
+                if (!bleData1 || !aggregatedData || !aggregatedData.augi_metadata || !imgElement) return;
+                
+                // Calculate scale factors for this image
+                const imgScaleX = imgElement.clientWidth / imgElement.naturalWidth;
+                const imgScaleY = imgElement.clientHeight / imgElement.naturalHeight;
+                
+                // Count how many times each coprocessor heard this BLE TX ID
+                const heardByCoprocessors = {};
+                bleData1.forEach(row => {
+                    if (row.ble_tx_id === bleTxId) {
+                        const coprocessorId = row.coprocessor_id;
+                        if (coprocessorId) {
+                            heardByCoprocessors[coprocessorId] = (heardByCoprocessors[coprocessorId] || 0) + 1;
+                        }
                     }
-                }
-            });
-            
-            // Draw lines to basestations that heard this BLE device
-            aggregatedData.augi_metadata.forEach(item => {
-                if (heardByCoprocessors[item.coprocessor]) {
-                    // Determine which coordinates to use for basestation
-                    let coordinates;
-                    if (basestationCoordinateOption === 'room_centroid') {
-                        coordinates = item.room_centroid_coordinate_pixels;
-                    } else {
-                        coordinates = item.augi_location_coordinate_pixels;
-                    }
-                    
-                    if (coordinates && coordinates.length === 2) {
-                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        line.setAttribute('x1', bleCoordinates[0] * scaleX);
-                        line.setAttribute('y1', bleCoordinates[1] * scaleY);
-                        line.setAttribute('x2', coordinates[0] * scaleX);
-                        line.setAttribute('y2', coordinates[1] * scaleY);
-                        line.setAttribute('stroke', 'rgba(255, 165, 0, 0.6)');
-                        line.setAttribute('stroke-width', '2');
-                        linesContainer.appendChild(line);
+                });
+                
+                // Draw lines to basestations that heard this BLE device
+                aggregatedData.augi_metadata.forEach(item => {
+                    if (heardByCoprocessors[item.coprocessor]) {
+                        // Determine which coordinates to use for basestation
+                        let coordinates;
+                        if (basestationCoordinateOption === 'room_centroid') {
+                            coordinates = item.room_centroid_coordinate_pixels;
+                        } else {
+                            coordinates = item.augi_location_coordinate_pixels;
+                        }
                         
-                        // Add count label near the basestation
-                        const countLabel = document.createElement('div');
-                        countLabel.className = 'ble-count-label';
-                        countLabel.style.position = 'absolute';
-                        countLabel.style.left = `${coordinates[0] * scaleX - 15}px`;
-                        countLabel.style.top = `${coordinates[1] * scaleY - 15}px`;
-                        countLabel.style.backgroundColor = 'rgba(255, 165, 0, 0.9)';
-                        countLabel.style.color = 'white';
-                        countLabel.style.fontWeight = 'bold';
-                        countLabel.style.fontSize = '11px';
-                        countLabel.style.padding = '2px 6px';
-                        countLabel.style.borderRadius = '10px';
-                        countLabel.style.border = '1px solid white';
-                        countLabel.style.pointerEvents = 'none';
-                        countLabel.textContent = heardByCoprocessors[item.coprocessor];
-                        dotsContainer.appendChild(countLabel);
+                        if (coordinates && coordinates.length === 2) {
+                            const opacity = dsNum === 1 ? image1Opacity : image2Opacity;
+                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('x1', bleCoordinates[0] * imgScaleX);
+                            line.setAttribute('y1', bleCoordinates[1] * imgScaleY);
+                            line.setAttribute('x2', coordinates[0] * imgScaleX);
+                            line.setAttribute('y2', coordinates[1] * imgScaleY);
+                            line.setAttribute('stroke', `rgba(255, 165, 0, ${0.6 * opacity})`);
+                            line.setAttribute('stroke-width', '2');
+                            line.setAttribute('opacity', opacity);
+                            linesContainer.appendChild(line);
+                            
+                            // Add count label near the basestation
+                            const countLabel = document.createElement('div');
+                            countLabel.className = 'ble-count-label';
+                            countLabel.style.position = 'absolute';
+                            countLabel.style.left = `${coordinates[0] * imgScaleX - 15}px`;
+                            countLabel.style.top = `${coordinates[1] * imgScaleY - 15}px`;
+                            countLabel.style.backgroundColor = `rgba(255, 165, 0, ${0.9 * opacity})`;
+                            countLabel.style.color = 'white';
+                            countLabel.style.fontWeight = 'bold';
+                            countLabel.style.fontSize = '11px';
+                            countLabel.style.padding = '2px 6px';
+                            countLabel.style.borderRadius = '10px';
+                            countLabel.style.border = '1px solid white';
+                            countLabel.style.opacity = opacity;
+                            countLabel.style.zIndex = '1000';
+                            countLabel.style.pointerEvents = 'none';
+                            countLabel.textContent = heardByCoprocessors[item.coprocessor];
+                            dotsContainer.appendChild(countLabel);
+                        }
                     }
-                }
+                });
             });
         }
         
-        function drawLinesToBleDevices(coprocessorId, basestationCoordinates, scaleX, scaleY) {
+        function drawLinesToBleDevices(coprocessorId, basestationCoordinates, scaleX, scaleY, datasetNum) {
             const linesContainer = document.getElementById('linesContainer');
             linesContainer.innerHTML = ''; // Clear existing lines
             
@@ -169,52 +210,66 @@
             
             selectedBleTxId = null; // Clear BLE selection
             
-            if (!bleData || !aggregatedData || !aggregatedData.ble_tx_id_coordinates) return;
-            
             const dotsContainer = document.getElementById('dotsContainer');
             
-            // Count how many times this coprocessor heard each BLE TX ID
-            const heardBleDevices = {};
-            bleData.forEach(row => {
-                if (row.coprocessor_id === coprocessorId) {
-                    const bleTxId = row.ble_tx_id;
-                    if (bleTxId) {
-                        heardBleDevices[bleTxId] = (heardBleDevices[bleTxId] || 0) + 1;
+            // Process both datasets
+            [1, 2].forEach(dsNum => {
+                const aggregatedData = dsNum === 1 ? aggregatedData1 : aggregatedData2;
+                const imgElement = dsNum === 1 ? currentImageElement1 : currentImageElement2;
+                
+                if (!bleData1 || !aggregatedData || !aggregatedData.ble_tx_id_coordinates || !imgElement) return;
+                
+                // Calculate scale factors for this image
+                const imgScaleX = imgElement.clientWidth / imgElement.naturalWidth;
+                const imgScaleY = imgElement.clientHeight / imgElement.naturalHeight;
+                
+                // Count how many times this coprocessor heard each BLE TX ID
+                const heardBleDevices = {};
+                bleData1.forEach(row => {
+                    if (row.coprocessor_id === coprocessorId) {
+                        const bleTxId = row.ble_tx_id;
+                        if (bleTxId) {
+                            heardBleDevices[bleTxId] = (heardBleDevices[bleTxId] || 0) + 1;
+                        }
                     }
-                }
-            });
-            
-            // Draw lines to BLE devices that this basestation heard
-            aggregatedData.ble_tx_id_coordinates.forEach(item => {
-                if (heardBleDevices[item.ble_tx_id]) {
-                    if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
-                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        line.setAttribute('x1', basestationCoordinates[0] * scaleX);
-                        line.setAttribute('y1', basestationCoordinates[1] * scaleY);
-                        line.setAttribute('x2', item.coordinate_pixels[0] * scaleX);
-                        line.setAttribute('y2', item.coordinate_pixels[1] * scaleY);
-                        line.setAttribute('stroke', 'rgba(0, 165, 255, 0.6)');
-                        line.setAttribute('stroke-width', '2');
-                        linesContainer.appendChild(line);
-                        
-                        // Add count label near the BLE device
-                        const countLabel = document.createElement('div');
-                        countLabel.className = 'ble-count-label';
-                        countLabel.style.position = 'absolute';
-                        countLabel.style.left = `${item.coordinate_pixels[0] * scaleX - 15}px`;
-                        countLabel.style.top = `${item.coordinate_pixels[1] * scaleY - 15}px`;
-                        countLabel.style.backgroundColor = 'rgba(0, 165, 255, 0.9)';
-                        countLabel.style.color = 'white';
-                        countLabel.style.fontWeight = 'bold';
-                        countLabel.style.fontSize = '11px';
-                        countLabel.style.padding = '2px 6px';
-                        countLabel.style.borderRadius = '10px';
-                        countLabel.style.border = '1px solid white';
-                        countLabel.style.pointerEvents = 'none';
-                        countLabel.textContent = heardBleDevices[item.ble_tx_id];
-                        dotsContainer.appendChild(countLabel);
+                });
+                
+                // Draw lines to BLE devices that this basestation heard
+                aggregatedData.ble_tx_id_coordinates.forEach(item => {
+                    if (heardBleDevices[item.ble_tx_id]) {
+                        if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
+                            const opacity = dsNum === 1 ? image1Opacity : image2Opacity;
+                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('x1', basestationCoordinates[0] * imgScaleX);
+                            line.setAttribute('y1', basestationCoordinates[1] * imgScaleY);
+                            line.setAttribute('x2', item.coordinate_pixels[0] * imgScaleX);
+                            line.setAttribute('y2', item.coordinate_pixels[1] * imgScaleY);
+                            line.setAttribute('stroke', `rgba(0, 165, 255, ${0.6 * opacity})`);
+                            line.setAttribute('stroke-width', '2');
+                            line.setAttribute('opacity', opacity);
+                            linesContainer.appendChild(line);
+                            
+                            // Add count label near the BLE device
+                            const countLabel = document.createElement('div');
+                            countLabel.className = 'ble-count-label';
+                            countLabel.style.position = 'absolute';
+                            countLabel.style.left = `${item.coordinate_pixels[0] * imgScaleX - 15}px`;
+                            countLabel.style.top = `${item.coordinate_pixels[1] * imgScaleY - 15}px`;
+                            countLabel.style.backgroundColor = `rgba(0, 165, 255, ${0.9 * opacity})`;
+                            countLabel.style.color = 'white';
+                            countLabel.style.fontWeight = 'bold';
+                            countLabel.style.fontSize = '11px';
+                            countLabel.style.padding = '2px 6px';
+                            countLabel.style.borderRadius = '10px';
+                            countLabel.style.border = '1px solid white';
+                            countLabel.style.opacity = opacity;
+                            countLabel.style.zIndex = '1000';
+                            countLabel.style.pointerEvents = 'none';
+                            countLabel.textContent = heardBleDevices[item.ble_tx_id];
+                            dotsContainer.appendChild(countLabel);
+                        }
                     }
-                }
+                });
             });
         }
         
@@ -236,44 +291,102 @@
         }
         
         function generateCoprocessorTable(bleTxId) {
-            return;
-            if (!bleData || !bleTxId) return;
+            if (!bleTxId || !bleData1) return;
             
             const tableBody = document.getElementById('coprocessorTableBody');
             tableBody.innerHTML = '';
             
-            // Filter data for the selected BLE TX ID and count by coprocessor
-            const coprocessorCounts = {};
-            bleData.forEach(row => {
+            // Build maps of which coprocessors belong to which dataset
+            const coprocessorToDataset = {};
+            if (aggregatedData1 && aggregatedData1.augi_metadata) {
+                aggregatedData1.augi_metadata.forEach(item => {
+                    coprocessorToDataset[item.coprocessor] = 1;
+                });
+            }
+            if (aggregatedData2 && aggregatedData2.augi_metadata) {
+                aggregatedData2.augi_metadata.forEach(item => {
+                    coprocessorToDataset[item.coprocessor] = 2;
+                });
+            }
+            
+            // Count how many times each coprocessor heard this BLE TX ID and calculate RSSI stats
+            const coprocessorStats = {};
+            bleData1.forEach(row => {
                 if (row.ble_tx_id === bleTxId) {
                     const coprocessorId = row.coprocessor_id;
                     if (coprocessorId) {
-                        coprocessorCounts[coprocessorId] = (coprocessorCounts[coprocessorId] || 0) + 1;
+                        const rssi = parseFloat(row.rssi);
+                        if (!coprocessorStats[coprocessorId]) {
+                            coprocessorStats[coprocessorId] = {
+                                count: 0,
+                                minRssi: Infinity,
+                                maxRssi: -Infinity,
+                                sumRssi: 0
+                            };
+                        }
+                        coprocessorStats[coprocessorId].count++;
+                        if (!isNaN(rssi)) {
+                            coprocessorStats[coprocessorId].minRssi = Math.min(coprocessorStats[coprocessorId].minRssi, rssi);
+                            coprocessorStats[coprocessorId].maxRssi = Math.max(coprocessorStats[coprocessorId].maxRssi, rssi);
+                            coprocessorStats[coprocessorId].sumRssi += rssi;
+                        }
                     }
                 }
             });
             
-            // Sort by count descending
-            const sortedEntries = Object.entries(coprocessorCounts).sort((a, b) => b[1] - a[1]);
+            // Create entries with dataset information
+            const allEntries = [];
+            Object.entries(coprocessorStats).forEach(([coprocessorId, stats]) => {
+                const dataset = coprocessorToDataset[coprocessorId] || '?';
+                const avgRssi = stats.count > 0 ? (stats.sumRssi / stats.count).toFixed(1) : 'N/A';
+                const minRssi = stats.minRssi !== Infinity ? stats.minRssi.toFixed(1) : 'N/A';
+                const maxRssi = stats.maxRssi !== -Infinity ? stats.maxRssi.toFixed(1) : 'N/A';
+                allEntries.push({ 
+                    coprocessorId, 
+                    dataset, 
+                    count: stats.count,
+                    minRssi,
+                    maxRssi,
+                    avgRssi
+                });
+            });
+            
+            // Sort by dataset, then by count descending
+            allEntries.sort((a, b) => {
+                if (a.dataset !== b.dataset) return a.dataset - b.dataset;
+                return b.count - a.count;
+            });
             
             // Populate table
-            if (sortedEntries.length === 0) {
+            if (allEntries.length === 0) {
                 const row = tableBody.insertRow();
                 const cell = row.insertCell(0);
-                cell.colSpan = 2;
+                cell.colSpan = 6;
                 cell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center; color: #666;';
                 cell.textContent = 'No data found for this BLE TX ID';
             } else {
-                sortedEntries.forEach(([coprocessorId, count]) => {
+                allEntries.forEach(entry => {
                     const row = tableBody.insertRow();
                     const cellId = row.insertCell(0);
-                    const cellCount = row.insertCell(1);
+                    const cellDataset = row.insertCell(1);
+                    const cellCount = row.insertCell(2);
+                    const cellMinRssi = row.insertCell(3);
+                    const cellMaxRssi = row.insertCell(4);
+                    const cellAvgRssi = row.insertCell(5);
                     
                     cellId.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellDataset.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
                     cellCount.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellMinRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellMaxRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                    cellAvgRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
                     
-                    cellId.textContent = coprocessorId;
-                    cellCount.textContent = count;
+                    cellId.textContent = entry.coprocessorId;
+                    cellDataset.textContent = entry.dataset;
+                    cellCount.textContent = entry.count;
+                    cellMinRssi.textContent = entry.minRssi;
+                    cellMaxRssi.textContent = entry.maxRssi;
+                    cellAvgRssi.textContent = entry.avgRssi;
                 });
             }
             
@@ -281,15 +394,8 @@
         }
         
         function renderDots() {
-            if (!currentImageElement || !aggregatedData) return;
-            
-            const imgElement = currentImageElement;
             const dotsContainer = document.getElementById('dotsContainer');
             dotsContainer.innerHTML = ''; // Clear any existing dots
-            
-            // Get the scale factor between natural and displayed size
-            const scaleX = imgElement.clientWidth / imgElement.naturalWidth;
-            const scaleY = imgElement.clientHeight / imgElement.naturalHeight;
             
             const showBleTxIds = document.getElementById('showBleTxIds').checked;
             const showBasestations = document.getElementById('showBasestations').checked;
@@ -297,130 +403,150 @@
             const basestationLabelOption = document.getElementById('basestationLabelOption').value;
             const basestationCoordinateOption = document.getElementById('basestationCoordinateOption').value;
             
-            // Display BLE transmitter dots
-            if (showBleTxIds && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
-                aggregatedData.ble_tx_id_coordinates.forEach(item => {
-                    if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
-                        const dot = document.createElement('div');
-                        dot.style.position = 'absolute';
-                        dot.style.left = `${item.coordinate_pixels[0] * scaleX}px`;
-                        dot.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
-                        dot.style.width = '10px';
-                        dot.style.height = '10px';
-                        dot.style.backgroundColor = 'red';
-                        dot.style.borderRadius = '50%';
-                        dot.style.transform = 'translate(-50%, -50%)';
-                        dot.style.cursor = 'pointer';
-                        dot.title = `BLE TX ID: ${item.ble_tx_id}`;
-                        
-                        // Add click handler to draw lines
-                        dot.addEventListener('click', function() {
-                            if (selectedBleTxId === item.ble_tx_id) {
-                                // Deselect if clicking the same dot
-                                selectedBleTxId = null;
-                                document.getElementById('linesContainer').innerHTML = '';
-                                // Clear count labels
-                                const existingLabels = document.querySelectorAll('.ble-count-label');
-                                existingLabels.forEach(label => label.remove());
-                            } else {
-                                selectedBleTxId = item.ble_tx_id;
-                                drawLinesToBasestations(item.ble_tx_id, item.coordinate_pixels, scaleX, scaleY);
-                            }
-                        });
-                        
-                        dotsContainer.appendChild(dot);
-                        
-                        // Add label next to the dot if not 'none'
-                        if (bleLabelOption !== 'none') {
-                            const label = document.createElement('div');
-                            label.style.position = 'absolute';
-                            label.style.left = `${item.coordinate_pixels[0] * scaleX + 10}px`;
-                            label.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
-                            label.style.transform = 'translateY(-50%)';
-                            label.style.color = 'red';
-                            label.style.fontWeight = 'bold';
-                            label.style.fontSize = '12px';
-                            label.style.whiteSpace = 'nowrap';
-                            label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
+            // Process both datasets
+            [1, 2].forEach(datasetNum => {
+                const aggregatedData = datasetNum === 1 ? aggregatedData1 : aggregatedData2;
+                const imgElement = datasetNum === 1 ? currentImageElement1 : currentImageElement2;
+                
+                if (!imgElement || !aggregatedData) return;
+                
+                // Get the scale factor between natural and displayed size
+                const scaleX = imgElement.clientWidth / imgElement.naturalWidth;
+                const scaleY = imgElement.clientHeight / imgElement.naturalHeight;
+                
+                // Display BLE transmitter dots
+                if (showBleTxIds && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
+                    aggregatedData.ble_tx_id_coordinates.forEach(item => {
+                        if (item.coordinate_pixels && item.coordinate_pixels.length === 2) {
+                            const opacity = datasetNum === 1 ? image1Opacity : image2Opacity;
+                            const dot = document.createElement('div');
+                            dot.style.position = 'absolute';
+                            dot.style.left = `${item.coordinate_pixels[0] * scaleX}px`;
+                            dot.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
+                            dot.style.width = '10px';
+                            dot.style.height = '10px';
+                            dot.style.backgroundColor = 'red';
+                            dot.style.borderRadius = '50%';
+                            dot.style.transform = 'translate(-50%, -50%)';
+                            dot.style.cursor = 'pointer';
+                            dot.style.opacity = opacity;
+                            dot.title = `Dataset ${datasetNum} - BLE TX ID: ${item.ble_tx_id}`;
                             
-                            if (bleLabelOption === 'full') {
-                                label.textContent = item.ble_tx_id;
-                            } else if (bleLabelOption === 'last4') {
-                                label.textContent = item.ble_tx_id.slice(-4);
-                            }
+                            // Add click handler to draw lines
+                            dot.addEventListener('click', function() {
+                                if (selectedBleTxId === item.ble_tx_id) {
+                                    // Deselect if clicking the same dot
+                                    selectedBleTxId = null;
+                                    document.getElementById('linesContainer').innerHTML = '';
+                                    // Clear count labels
+                                    const existingLabels = document.querySelectorAll('.ble-count-label');
+                                    existingLabels.forEach(label => label.remove());
+                                } else {
+                                    selectedBleTxId = item.ble_tx_id;
+                                    drawLinesToBasestations(item.ble_tx_id, item.coordinate_pixels, scaleX, scaleY, datasetNum);
+                                }
+                            });
                             
-                            dotsContainer.appendChild(label);
+                            dotsContainer.appendChild(dot);
+                            
+                            // Add label next to the dot if not 'none'
+                            if (bleLabelOption !== 'none') {
+                                const opacity = datasetNum === 1 ? image1Opacity : image2Opacity;
+                                const label = document.createElement('div');
+                                label.style.position = 'absolute';
+                                label.style.left = `${item.coordinate_pixels[0] * scaleX + 10}px`;
+                                label.style.top = `${item.coordinate_pixels[1] * scaleY}px`;
+                                label.style.transform = 'translateY(-50%)';
+                                label.style.color = 'red';
+                                label.style.fontWeight = 'bold';
+                                label.style.fontSize = '12px';
+                                label.style.whiteSpace = 'nowrap';
+                                label.style.opacity = opacity;
+                                label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
+                                
+                                if (bleLabelOption === 'full') {
+                                    label.textContent = item.ble_tx_id;
+                                } else if (bleLabelOption === 'last4') {
+                                    label.textContent = item.ble_tx_id.slice(-4);
+                                }
+                                
+                                dotsContainer.appendChild(label);
+                            }
                         }
-                    }
-                });
-            }
-            
-            // Display basestation dots
-            if (showBasestations && aggregatedData.augi_metadata && aggregatedData.augi_metadata.length > 0) {
-                aggregatedData.augi_metadata.forEach(item => {
-                    // Determine which coordinates to use
-                    let coordinates;
-                    if (basestationCoordinateOption === 'room_centroid') {
-                        coordinates = item.room_centroid_coordinate_pixels;
-                    } else {
-                        coordinates = item.augi_location_coordinate_pixels;
-                    }
-                    
-                    if (coordinates && coordinates.length === 2) {
-                        const dot = document.createElement('div');
-                        dot.style.position = 'absolute';
-                        dot.style.left = `${coordinates[0] * scaleX}px`;
-                        dot.style.top = `${coordinates[1] * scaleY}px`;
-                        dot.style.width = '10px';
-                        dot.style.height = '10px';
-                        dot.style.backgroundColor = 'blue';
-                        dot.style.borderRadius = '50%';
-                        dot.style.transform = 'translate(-50%, -50%)';
-                        dot.style.cursor = 'pointer';
-                        dot.title = `Basestation ID: ${item.basestation_id}, Coprocessor: ${item.coprocessor}, Room id: ${item.room_id}`;
-                        
-                        // Add click handler to draw lines to BLE devices
-                        dot.addEventListener('click', function() {
-                            if (selectedCoprocessorId === item.coprocessor) {
-                                // Deselect if clicking the same dot
-                                selectedCoprocessorId = null;
-                                document.getElementById('linesContainer').innerHTML = '';
-                                // Clear count labels
-                                const existingLabels = document.querySelectorAll('.ble-count-label');
-                                existingLabels.forEach(label => label.remove());
-                            } else {
-                                selectedCoprocessorId = item.coprocessor;
-                                drawLinesToBleDevices(item.coprocessor, coordinates, scaleX, scaleY);
-                            }
-                        });
-                        
-                        
-                        dotsContainer.appendChild(dot);
-                        
-                        // Add label next to the dot if not 'none'
-                        if (basestationLabelOption !== 'none') {
-                            const label = document.createElement('div');
-                            label.style.position = 'absolute';
-                            label.style.left = `${coordinates[0] * scaleX + 10}px`;
-                            label.style.top = `${coordinates[1] * scaleY}px`;
-                            label.style.transform = 'translateY(-50%)';
-                            label.style.color = 'blue';
-                            label.style.fontWeight = 'bold';
-                            label.style.fontSize = '12px';
-                            label.style.whiteSpace = 'nowrap';
-                            label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
-                            
-                            if (basestationLabelOption === 'full') {
-                                label.textContent = `${item.basestation_id} (${item.coprocessor})`;
-                            } else if (basestationLabelOption === 'last4') {
-                                label.textContent = `${item.basestation_id.slice(-4)} (${item.coprocessor.slice(-4)})`;
-                            }
-                            
-                            dotsContainer.appendChild(label);
+                    });
+                }
+                
+                // Display basestation dots
+                if (showBasestations && aggregatedData.augi_metadata && aggregatedData.augi_metadata.length > 0) {
+                    aggregatedData.augi_metadata.forEach(item => {
+                        // Determine which coordinates to use
+                        let coordinates;
+                        if (basestationCoordinateOption === 'room_centroid') {
+                            coordinates = item.room_centroid_coordinate_pixels;
+                        } else {
+                            coordinates = item.augi_location_coordinate_pixels;
                         }
-                    }
-                });
-            }
+                        
+                        if (coordinates && coordinates.length === 2) {
+                            const opacity = datasetNum === 1 ? image1Opacity : image2Opacity;
+                            const dot = document.createElement('div');
+                            dot.style.position = 'absolute';
+                            dot.style.left = `${coordinates[0] * scaleX}px`;
+                            dot.style.top = `${coordinates[1] * scaleY}px`;
+                            dot.style.width = '10px';
+                            dot.style.height = '10px';
+                            dot.style.backgroundColor = 'blue';
+                            dot.style.borderRadius = '50%';
+                            dot.style.transform = 'translate(-50%, -50%)';
+                            dot.style.cursor = 'pointer';
+                            dot.style.opacity = opacity;
+                            dot.title = `Dataset ${datasetNum} - Basestation ID: ${item.basestation_id}, Coprocessor: ${item.coprocessor}, Room id: ${item.room_id}`;
+                            
+                            // Add click handler to draw lines to BLE devices
+                            dot.addEventListener('click', function() {
+                                if (selectedCoprocessorId === item.coprocessor) {
+                                    // Deselect if clicking the same dot
+                                    selectedCoprocessorId = null;
+                                    document.getElementById('linesContainer').innerHTML = '';
+                                    // Clear count labels
+                                    const existingLabels = document.querySelectorAll('.ble-count-label');
+                                    existingLabels.forEach(label => label.remove());
+                                } else {
+                                    selectedCoprocessorId = item.coprocessor;
+                                    drawLinesToBleDevices(item.coprocessor, coordinates, scaleX, scaleY, datasetNum);
+                                }
+                            });
+                            
+                            
+                            dotsContainer.appendChild(dot);
+                            
+                            // Add label next to the dot if not 'none'
+                            if (basestationLabelOption !== 'none') {
+                                const opacity = datasetNum === 1 ? image1Opacity : image2Opacity;
+                                const label = document.createElement('div');
+                                label.style.position = 'absolute';
+                                label.style.left = `${coordinates[0] * scaleX + 10}px`;
+                                label.style.top = `${coordinates[1] * scaleY}px`;
+                                label.style.transform = 'translateY(-50%)';
+                                label.style.color = 'blue';
+                                label.style.fontWeight = 'bold';
+                                label.style.fontSize = '12px';
+                                label.style.whiteSpace = 'nowrap';
+                                label.style.opacity = opacity;
+                                label.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white';
+                                
+                                if (basestationLabelOption === 'full') {
+                                    label.textContent = item.coprocessor;
+                                } else if (basestationLabelOption === 'last4') {
+                                    label.textContent = item.coprocessor.slice(-4);
+                                }
+                                
+                                dotsContainer.appendChild(label);
+                            }
+                        }
+                    });
+                }
+            });
         }
         
         // Add event listeners to checkboxes and dropdown
@@ -435,9 +561,163 @@
             generateCoprocessorTable(event.target.value);
         });
         
-        document.getElementById('zipFileInput').addEventListener('change', async function(event) {
-            const file = event.target.files[0];
+        // Add event listener for toggle table button
+        document.getElementById('toggleTableBtn').addEventListener('click', function() {
+            const table = document.getElementById('bleDataTable');
+            const btn = document.getElementById('toggleTableBtn');
+            if (table.style.display === 'none') {
+                table.style.display = 'block';
+                btn.textContent = 'Hide Table';
+            } else {
+                table.style.display = 'none';
+                btn.textContent = 'Show Table';
+            }
+        });
+        
+        // Add event listeners for opacity sliders
+        document.getElementById('image1Opacity').addEventListener('input', function(event) {
+            const opacity = event.target.value / 100;
+            image1Opacity = opacity;
+            const img = document.getElementById('floorPlanImage1');
+            if (img) {
+                img.style.opacity = opacity;
+            }
+            document.getElementById('image1OpacityValue').textContent = event.target.value + '%';
             
+            // Save current selections
+            const savedBleTxId = selectedBleTxId;
+            const savedCoprocessorId = selectedCoprocessorId;
+            
+            renderDots();
+            
+            // Redraw lines if there was an active selection
+            if (savedBleTxId) {
+                // Check both datasets for the BLE item
+                if (currentImageElement1 && aggregatedData1) {
+                    const bleItem = aggregatedData1.ble_tx_id_coordinates?.find(item => item.ble_tx_id === savedBleTxId);
+                    if (bleItem) {
+                        const scaleX = currentImageElement1.clientWidth / currentImageElement1.naturalWidth;
+                        const scaleY = currentImageElement1.clientHeight / currentImageElement1.naturalHeight;
+                        drawLinesToBasestations(savedBleTxId, bleItem.coordinate_pixels, scaleX, scaleY, 1);
+                        return; // Exit after redrawing
+                    }
+                }
+                if (currentImageElement2 && aggregatedData2) {
+                    const bleItem = aggregatedData2.ble_tx_id_coordinates?.find(item => item.ble_tx_id === savedBleTxId);
+                    if (bleItem) {
+                        const scaleX = currentImageElement2.clientWidth / currentImageElement2.naturalWidth;
+                        const scaleY = currentImageElement2.clientHeight / currentImageElement2.naturalHeight;
+                        drawLinesToBasestations(savedBleTxId, bleItem.coordinate_pixels, scaleX, scaleY, 2);
+                        return; // Exit after redrawing
+                    }
+                }
+            } else if (savedCoprocessorId) {
+                // Check both datasets for the basestation item
+                if (currentImageElement1 && aggregatedData1) {
+                    const basestationItem = aggregatedData1.augi_metadata?.find(item => item.coprocessor === savedCoprocessorId);
+                    if (basestationItem) {
+                        const scaleX = currentImageElement1.clientWidth / currentImageElement1.naturalWidth;
+                        const scaleY = currentImageElement1.clientHeight / currentImageElement1.naturalHeight;
+                        const basestationCoordinateOption = document.getElementById('basestationCoordinateOption').value;
+                        const coordinates = basestationCoordinateOption === 'room_centroid' 
+                            ? basestationItem.room_centroid_coordinate_pixels 
+                            : basestationItem.augi_location_coordinate_pixels;
+                        if (coordinates) {
+                            drawLinesToBleDevices(savedCoprocessorId, coordinates, scaleX, scaleY, 1);
+                            return; // Exit after redrawing
+                        }
+                    }
+                }
+                if (currentImageElement2 && aggregatedData2) {
+                    const basestationItem = aggregatedData2.augi_metadata?.find(item => item.coprocessor === savedCoprocessorId);
+                    if (basestationItem) {
+                        const scaleX = currentImageElement2.clientWidth / currentImageElement2.naturalWidth;
+                        const scaleY = currentImageElement2.clientHeight / currentImageElement2.naturalHeight;
+                        const basestationCoordinateOption = document.getElementById('basestationCoordinateOption').value;
+                        const coordinates = basestationCoordinateOption === 'room_centroid' 
+                            ? basestationItem.room_centroid_coordinate_pixels 
+                            : basestationItem.augi_location_coordinate_pixels;
+                        if (coordinates) {
+                            drawLinesToBleDevices(savedCoprocessorId, coordinates, scaleX, scaleY, 2);
+                            return; // Exit after redrawing
+                        }
+                    }
+                }
+            }
+        });
+        
+        document.getElementById('image2Opacity').addEventListener('input', function(event) {
+            const opacity = event.target.value / 100;
+            image2Opacity = opacity;
+            const img = document.getElementById('floorPlanImage2');
+            if (img) {
+                img.style.opacity = opacity;
+            }
+            document.getElementById('image2OpacityValue').textContent = event.target.value + '%';
+            
+            // Save current selections
+            const savedBleTxId = selectedBleTxId;
+            const savedCoprocessorId = selectedCoprocessorId;
+            
+            renderDots();
+            
+            // Redraw lines if there was an active selection
+            if (savedBleTxId) {
+                // Check both datasets for the BLE item
+                if (currentImageElement1 && aggregatedData1) {
+                    const bleItem = aggregatedData1.ble_tx_id_coordinates?.find(item => item.ble_tx_id === savedBleTxId);
+                    if (bleItem) {
+                        const scaleX = currentImageElement1.clientWidth / currentImageElement1.naturalWidth;
+                        const scaleY = currentImageElement1.clientHeight / currentImageElement1.naturalHeight;
+                        drawLinesToBasestations(savedBleTxId, bleItem.coordinate_pixels, scaleX, scaleY, 1);
+                        return; // Exit after redrawing
+                    }
+                }
+                if (currentImageElement2 && aggregatedData2) {
+                    const bleItem = aggregatedData2.ble_tx_id_coordinates?.find(item => item.ble_tx_id === savedBleTxId);
+                    if (bleItem) {
+                        const scaleX = currentImageElement2.clientWidth / currentImageElement2.naturalWidth;
+                        const scaleY = currentImageElement2.clientHeight / currentImageElement2.naturalHeight;
+                        drawLinesToBasestations(savedBleTxId, bleItem.coordinate_pixels, scaleX, scaleY, 2);
+                        return; // Exit after redrawing
+                    }
+                }
+            } else if (savedCoprocessorId) {
+                // Check both datasets for the basestation item
+                if (currentImageElement1 && aggregatedData1) {
+                    const basestationItem = aggregatedData1.augi_metadata?.find(item => item.coprocessor === savedCoprocessorId);
+                    if (basestationItem) {
+                        const scaleX = currentImageElement1.clientWidth / currentImageElement1.naturalWidth;
+                        const scaleY = currentImageElement1.clientHeight / currentImageElement1.naturalHeight;
+                        const basestationCoordinateOption = document.getElementById('basestationCoordinateOption').value;
+                        const coordinates = basestationCoordinateOption === 'room_centroid' 
+                            ? basestationItem.room_centroid_coordinate_pixels 
+                            : basestationItem.augi_location_coordinate_pixels;
+                        if (coordinates) {
+                            drawLinesToBleDevices(savedCoprocessorId, coordinates, scaleX, scaleY, 1);
+                            return; // Exit after redrawing
+                        }
+                    }
+                }
+                if (currentImageElement2 && aggregatedData2) {
+                    const basestationItem = aggregatedData2.augi_metadata?.find(item => item.coprocessor === savedCoprocessorId);
+                    if (basestationItem) {
+                        const scaleX = currentImageElement2.clientWidth / currentImageElement2.naturalWidth;
+                        const scaleY = currentImageElement2.clientHeight / currentImageElement2.naturalHeight;
+                        const basestationCoordinateOption = document.getElementById('basestationCoordinateOption').value;
+                        const coordinates = basestationCoordinateOption === 'room_centroid' 
+                            ? basestationItem.room_centroid_coordinate_pixels 
+                            : basestationItem.augi_location_coordinate_pixels;
+                        if (coordinates) {
+                            drawLinesToBleDevices(savedCoprocessorId, coordinates, scaleX, scaleY, 2);
+                            return; // Exit after redrawing
+                        }
+                    }
+                }
+            }
+        });
+        
+        async function processZipFile(file, datasetNum) {
             if (!file) {
                 return;
             }
@@ -448,12 +728,12 @@
             }
             
             try {
-                console.log(`Processing ZIP file: ${file.name}`);
+                console.log(`Processing ZIP file ${datasetNum}: ${file.name}`);
                 
                 const zip = new JSZip();
                 const contents = await zip.loadAsync(file);
                 
-                console.log('File sizes in ZIP archive:');
+                console.log(`Dataset ${datasetNum} - File sizes in ZIP archive:`);
                 console.log('----------------------------');
                 
                 let floorPlanFile = null;
@@ -487,11 +767,16 @@
                 // Load the aggregated.json file if found
                 if (aggregatedJsonFile) {
                     const jsonText = await aggregatedJsonFile.async('text');
-                    aggregatedData = JSON.parse(jsonText);
-                    console.log('manual_gt_data.json loaded:', aggregatedData);
+                    const aggregatedData = JSON.parse(jsonText);
+                    if (datasetNum === 1) {
+                        aggregatedData1 = aggregatedData;
+                    } else {
+                        aggregatedData2 = aggregatedData;
+                    }
+                    console.log(`Dataset ${datasetNum} manual_gt_data.json loaded:`, aggregatedData);
                     
-                    // Display static_window if available
-                    if (aggregatedData.static_window && aggregatedData.static_window.length === 2) {
+                    // Display static_window if available (only for dataset 1)
+                    if (datasetNum === 1 && aggregatedData.static_window && aggregatedData.static_window.length === 2) {
                         document.getElementById('startTime').textContent = aggregatedData.static_window[0];
                         document.getElementById('endTime').textContent = aggregatedData.static_window[1];
                         document.getElementById('staticWindowInfo').style.display = 'block';
@@ -499,8 +784,8 @@
                         console.log('Static window displayed:', aggregatedData.static_window);
                     }
                     
-                    // Populate BLE TX ID dropdown
-                    if (aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
+                    // Populate BLE TX ID dropdown (only for dataset 1)
+                    if (datasetNum === 1 && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
                         const selector = document.getElementById('bleTxIdSelector');
                         // Clear existing options except the first one
                         selector.innerHTML = '<option value="">-- Select a BLE TX ID --</option>';
@@ -516,33 +801,45 @@
                     }
                 }
                 
-                // Load the ble_data.csv file if found
-                if (bleDataFile) {
+                // Load the ble_data.csv file if found (only from dataset 1, as it's the same for both)
+                if (bleDataFile && datasetNum === 1) {
                     const csvText = await bleDataFile.async('text');
-                    bleData = parseCsv(csvText);
-                    console.log('ble_data.csv loaded:', bleData.length, 'rows');
+                    bleData1 = parseCsv(csvText);
+                    console.log(`ble_data.csv loaded:`, bleData1.length, 'rows');
                 }
                 
                 // Display the floor plan image if found
                 if (floorPlanFile) {
                     const blob = await floorPlanFile.async('blob');
                     const imageUrl = URL.createObjectURL(blob);
-                    const imgElement = document.getElementById('floorPlanImage');
+                    const imgElement = document.getElementById(`floorPlanImage${datasetNum}`);
                     
                     imgElement.onload = function() {
                         imgElement.style.display = 'block';
-                        console.log('Floor plan image displayed');
-                        currentImageElement = imgElement;
+                        console.log(`Dataset ${datasetNum} floor plan image displayed`);
+                        if (datasetNum === 1) {
+                            currentImageElement1 = imgElement;
+                        } else {
+                            currentImageElement2 = imgElement;
+                        }
                         renderDots();
                     };
                     
                     imgElement.src = imageUrl;
                 } else {
-                    console.warn('floor_plan.jpg not found in the ZIP file');
+                    console.warn(`Dataset ${datasetNum} floor_plan.jpg not found in the ZIP file`);
                 }
             } catch (error) {
-                console.error('Error processing ZIP file:', error);
+                console.error(`Error processing ZIP file ${datasetNum}:`, error);
             }
+        }
+        
+        document.getElementById('zipFileInput1').addEventListener('change', async function(event) {
+            await processZipFile(event.target.files[0], 1);
+        });
+        
+        document.getElementById('zipFileInput2').addEventListener('change', async function(event) {
+            await processZipFile(event.target.files[0], 2);
         });
     </script>
 </body>
