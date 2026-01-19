@@ -101,11 +101,14 @@
                 </div>
                 <div>
                     <h4>Dataset Summary</h4>
-                    <table id="datasetSummaryTable" style="border-collapse: collapse; width: 100%; max-width: 400px;">
+                    <table id="datasetSummaryTable" style="border-collapse: collapse; width: 100%; max-width: 700px;">
                         <thead>
                             <tr style="background-color: #f0f0f0;">
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Dataset</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Coprocessors</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">% of Total Coprocessors</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Total Count</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">% of Total Count</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Min RSSI</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Max RSSI</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Avg RSSI</th>
@@ -225,7 +228,7 @@
             if (currentTableData.length === 0) {
                 const row = summaryBody.insertRow();
                 const cell = row.insertCell(0);
-                cell.colSpan = 5;
+                cell.colSpan = 8;
                 cell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center; color: #666;';
                 cell.textContent = 'No data';
                 return;
@@ -238,6 +241,7 @@
                 const ds = entry.dataset;
                 if (!datasetStats[ds]) {
                     datasetStats[ds] = {
+                        coprocessors: new Set(),
                         totalCount: 0,
                         minRssi: Infinity,
                         maxRssi: -Infinity,
@@ -245,6 +249,7 @@
                     };
                 }
                 
+                datasetStats[ds].coprocessors.add(entry.coprocessorId);
                 datasetStats[ds].totalCount += entry.count;
                 
                 // Parse RSSI values
@@ -269,23 +274,40 @@
             // Sort by dataset number
             const sortedDatasets = Object.keys(datasetStats).sort();
             
+            // Calculate totals for percentages
+            let totalCoprocessors = 0;
+            let totalCount = 0;
+            sortedDatasets.forEach(ds => {
+                totalCoprocessors += datasetStats[ds].coprocessors.size;
+                totalCount += datasetStats[ds].totalCount;
+            });
+            
             sortedDatasets.forEach(ds => {
                 const stats = datasetStats[ds];
                 const row = summaryBody.insertRow();
                 const cellDataset = row.insertCell(0);
-                const cellTotalCount = row.insertCell(1);
-                const cellMinRssi = row.insertCell(2);
-                const cellMaxRssi = row.insertCell(3);
-                const cellAvgRssi = row.insertCell(4);
+                const cellCoprocessors = row.insertCell(1);
+                const cellCoprocessorPct = row.insertCell(2);
+                const cellTotalCount = row.insertCell(3);
+                const cellCountPct = row.insertCell(4);
+                const cellMinRssi = row.insertCell(5);
+                const cellMaxRssi = row.insertCell(6);
+                const cellAvgRssi = row.insertCell(7);
                 
                 cellDataset.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;';
+                cellCoprocessors.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                cellCoprocessorPct.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
                 cellTotalCount.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                cellCountPct.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
                 cellMinRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
                 cellMaxRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
                 cellAvgRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
                 
                 cellDataset.textContent = ds;
+                cellCoprocessors.textContent = stats.coprocessors.size;
+                cellCoprocessorPct.textContent = totalCoprocessors > 0 ? ((stats.coprocessors.size / totalCoprocessors) * 100).toFixed(1) + '%' : 'N/A';
                 cellTotalCount.textContent = stats.totalCount;
+                cellCountPct.textContent = totalCount > 0 ? ((stats.totalCount / totalCount) * 100).toFixed(1) + '%' : 'N/A';
                 cellMinRssi.textContent = stats.minRssi !== Infinity ? stats.minRssi.toFixed(1) : 'N/A';
                 cellMaxRssi.textContent = stats.maxRssi !== -Infinity ? stats.maxRssi.toFixed(1) : 'N/A';
                 
