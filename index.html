@@ -835,22 +835,6 @@
                         
                         console.log('Static window displayed:', aggregatedData.static_window);
                     }
-                    
-                    // Populate BLE TX ID dropdown (only for dataset 1)
-                    if (datasetNum === 1 && aggregatedData.ble_tx_id_coordinates && aggregatedData.ble_tx_id_coordinates.length > 0) {
-                        const selector = document.getElementById('bleTxIdSelector');
-                        // Clear existing options except the first one
-                        selector.innerHTML = '<option value="">-- Select a BLE TX ID --</option>';
-                        
-                        aggregatedData.ble_tx_id_coordinates.forEach(item => {
-                            const option = document.createElement('option');
-                            option.value = item.ble_tx_id;
-                            option.textContent = item.ble_tx_id;
-                            selector.appendChild(option);
-                        });
-                        
-                        console.log(`Populated dropdown with ${aggregatedData.ble_tx_id_coordinates.length} BLE TX IDs`);
-                    }
                 }
                 
                 // Load the ble_data.csv file if found (only from dataset 1, as it's the same for both)
@@ -858,6 +842,26 @@
                     const csvText = await bleDataFile.async('text');
                     bleData1 = parseCsv(csvText);
                     console.log(`ble_data.csv loaded:`, bleData1.length, 'rows');
+                    
+                    // Populate BLE TX ID dropdown from ble_data.csv
+                    if (bleData1 && bleData1.length > 0) {
+                        const selector = document.getElementById('bleTxIdSelector');
+                        // Clear existing options except the first one
+                        selector.innerHTML = '<option value="">-- Select a BLE TX ID --</option>';
+                        
+                        // Get unique BLE TX IDs from the CSV data
+                        const uniqueBleTxIds = [...new Set(bleData1.map(row => row.ble_tx_id).filter(id => id))];
+                        uniqueBleTxIds.sort();
+                        
+                        uniqueBleTxIds.forEach(bleTxId => {
+                            const option = document.createElement('option');
+                            option.value = bleTxId;
+                            option.textContent = bleTxId;
+                            selector.appendChild(option);
+                        });
+                        
+                        console.log(`Populated dropdown with ${uniqueBleTxIds.length} unique BLE TX IDs from ble_data.csv`);
+                    }
                 }
                 
                 // Display the floor plan image if found
