@@ -81,21 +81,41 @@
         </div>
         
         <div id="bleDataTable" style="margin-top: 15px; display: none;">
-            <h4>Coprocessor Hearing Count</h4>
-            <table id="coprocessorTable" style="border-collapse: collapse; width: 100%; max-width: 600px;">
-                <thead>
-                    <tr style="background-color: #f0f0f0;">
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="coprocessorId">Coprocessor ID <span id="sort-coprocessorId"></span></th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="dataset">Dataset <span id="sort-dataset"></span></th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="count">Count <span id="sort-count"></span></th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="minRssi">Min RSSI <span id="sort-minRssi"></span></th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="maxRssi">Max RSSI <span id="sort-maxRssi"></span></th>
-                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="avgRssi">Avg RSSI <span id="sort-avgRssi"></span></th>
-                    </tr>
-                </thead>
-                <tbody id="coprocessorTableBody">
-                </tbody>
-            </table>
+            <div style="display: flex; gap: 30px; align-items: flex-start;">
+                <div>
+                    <h4>Coprocessor Hearing Count</h4>
+                    <table id="coprocessorTable" style="border-collapse: collapse; width: 100%; max-width: 600px;">
+                        <thead>
+                            <tr style="background-color: #f0f0f0;">
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="coprocessorId">Coprocessor ID <span id="sort-coprocessorId"></span></th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="dataset">Dataset <span id="sort-dataset"></span></th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="count">Count <span id="sort-count"></span></th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="minRssi">Min RSSI <span id="sort-minRssi"></span></th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="maxRssi">Max RSSI <span id="sort-maxRssi"></span></th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left; cursor: pointer;" data-column="avgRssi">Avg RSSI <span id="sort-avgRssi"></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="coprocessorTableBody">
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h4>Dataset Summary</h4>
+                    <table id="datasetSummaryTable" style="border-collapse: collapse; width: 100%; max-width: 400px;">
+                        <thead>
+                            <tr style="background-color: #f0f0f0;">
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Dataset</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Total Count</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Min RSSI</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Max RSSI</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Avg RSSI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="datasetSummaryTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -193,6 +213,91 @@
                     cellAvgRssi.textContent = entry.avgRssi;
                 });
             }
+            
+            // Update dataset summary table
+            renderDatasetSummary();
+        }
+        
+        function renderDatasetSummary() {
+            const summaryBody = document.getElementById('datasetSummaryTableBody');
+            summaryBody.innerHTML = '';
+            
+            if (currentTableData.length === 0) {
+                const row = summaryBody.insertRow();
+                const cell = row.insertCell(0);
+                cell.colSpan = 5;
+                cell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center; color: #666;';
+                cell.textContent = 'No data';
+                return;
+            }
+            
+            // Aggregate data by dataset
+            const datasetStats = {};
+            
+            currentTableData.forEach(entry => {
+                const ds = entry.dataset;
+                if (!datasetStats[ds]) {
+                    datasetStats[ds] = {
+                        totalCount: 0,
+                        minRssi: Infinity,
+                        maxRssi: -Infinity,
+                        rssiValues: []
+                    };
+                }
+                
+                datasetStats[ds].totalCount += entry.count;
+                
+                // Parse RSSI values
+                const minRssi = entry.minRssi !== 'N/A' ? parseFloat(entry.minRssi) : null;
+                const maxRssi = entry.maxRssi !== 'N/A' ? parseFloat(entry.maxRssi) : null;
+                const avgRssi = entry.avgRssi !== 'N/A' ? parseFloat(entry.avgRssi) : null;
+                
+                if (minRssi !== null) {
+                    datasetStats[ds].minRssi = Math.min(datasetStats[ds].minRssi, minRssi);
+                }
+                if (maxRssi !== null) {
+                    datasetStats[ds].maxRssi = Math.max(datasetStats[ds].maxRssi, maxRssi);
+                }
+                if (avgRssi !== null) {
+                    // Weight the average by count for proper aggregation
+                    for (let i = 0; i < entry.count; i++) {
+                        datasetStats[ds].rssiValues.push(avgRssi);
+                    }
+                }
+            });
+            
+            // Sort by dataset number
+            const sortedDatasets = Object.keys(datasetStats).sort();
+            
+            sortedDatasets.forEach(ds => {
+                const stats = datasetStats[ds];
+                const row = summaryBody.insertRow();
+                const cellDataset = row.insertCell(0);
+                const cellTotalCount = row.insertCell(1);
+                const cellMinRssi = row.insertCell(2);
+                const cellMaxRssi = row.insertCell(3);
+                const cellAvgRssi = row.insertCell(4);
+                
+                cellDataset.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;';
+                cellTotalCount.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                cellMinRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                cellMaxRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                cellAvgRssi.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+                
+                cellDataset.textContent = ds;
+                cellTotalCount.textContent = stats.totalCount;
+                cellMinRssi.textContent = stats.minRssi !== Infinity ? stats.minRssi.toFixed(1) : 'N/A';
+                cellMaxRssi.textContent = stats.maxRssi !== -Infinity ? stats.maxRssi.toFixed(1) : 'N/A';
+                
+                // Calculate overall average from all RSSI values
+                if (stats.rssiValues.length > 0) {
+                    const sum = stats.rssiValues.reduce((a, b) => a + b, 0);
+                    const avg = sum / stats.rssiValues.length;
+                    cellAvgRssi.textContent = avg.toFixed(1);
+                } else {
+                    cellAvgRssi.textContent = 'N/A';
+                }
+            });
         }
         
         function drawLinesToBasestations(bleTxId, bleCoordinates, scaleX, scaleY, datasetNum) {
